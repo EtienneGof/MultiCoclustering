@@ -15,11 +15,8 @@ object clusteringExample {
       DenseMatrix(0.3, 0.0, 0.0, 0.3).reshape(2,2))
 
     val data = Common.DataGeneration.randomMixture(modes, covariances, List(50, 50, 50, 50)).map(List(_))
-
     val clustering = new Clustering(data, alpha = Some(5D))
-
     val (rowPartitionEveryIteration,  _, _) = clustering.run(100)
-
 
     println(rowPartitionEveryIteration.last)
     println("The resulting cluster count should be around List(50, 50, 50, 50)")

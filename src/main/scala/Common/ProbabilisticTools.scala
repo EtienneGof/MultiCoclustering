@@ -28,15 +28,15 @@ object ProbabilisticTools extends java.io.Serializable {
 
     val internProduct = XCentered.map(row => (row._1, row._2 * row._2.t))
     val internProductSumRDD: RDD[((Int,Int), DenseMatrix[Double])] = internProduct.reduceByKey(_+_)
-    val interProductSumArray: Array[((Int,Int),  DenseMatrix[Double])] = internProductSumRDD.collect()
+    val interProductSumList: List[((Int,Int),  DenseMatrix[Double])] = internProductSumRDD.collect().toList
 
-    interProductSumArray.map(c => (c._1,c._2/(count(c._1)-1).toDouble)).toMap
+    interProductSumList.map(c => (c._1,c._2/(count(c._1)-1).toDouble)).toMap
 
   }
 
-  def covariance(X: Array[DenseVector[Double]], mode: DenseVector[Double], constraint: String = "none"): DenseMatrix[Double] = {
+  def covariance(X: List[DenseVector[Double]], mode: DenseVector[Double], constraint: String = "none"): DenseMatrix[Double] = {
 
-    require(Array("none","independant").contains(constraint))
+    require(List("none","independant").contains(constraint))
     require(mode.length==X.head.length)
     val XMat: DenseMatrix[Double] = DenseMatrix(X.toArray:_*)
     val p = XMat.cols
@@ -56,11 +56,11 @@ object ProbabilisticTools extends java.io.Serializable {
     sum( weights *:* (X- meanDV(X)) *:* (Y- meanDV(Y)) ) / sum(weights)
   }
 
-  def weightedCovariance (X: Array[DenseVector[Double]],
+  def weightedCovariance (X: List[DenseVector[Double]],
                           weights: DenseVector[Double],
                           mode: DenseVector[Double],
                           constraint: String = "none"): DenseMatrix[Double] = {
-    require(Array("none","independant").contains(constraint))
+    require(List("none","independant").contains(constraint))
     require(mode.length==X.head.length)
     require(weights.length==X.length)
 
@@ -83,18 +83,18 @@ object ProbabilisticTools extends java.io.Serializable {
     sum(X)/X.length
   }
 
-  def meanArrayDV(X: Array[DenseVector[Double]]): DenseVector[Double] = {
+  def meanListDV(X: List[DenseVector[Double]]): DenseVector[Double] = {
     require(X.nonEmpty)
     X.reduce(_+_) / X.length.toDouble
   }
 
-  def weightedMean(X: Array[DenseVector[Double]], weights: DenseVector[Double]): DenseVector[Double] = {
+  def weightedMean(X: List[DenseVector[Double]], weights: DenseVector[Double]): DenseVector[Double] = {
     require(X.length == weights.length)
     val res = X.indices.par.map(i => weights(i) * X(i)).reduce(_+_) / sum(weights)
     res
   }
 
-  def sample(probabilities: Array[Double]): Int = {
+  def sample(probabilities: List[Double]): Int = {
     val dist = probabilities.indices zip probabilities
     val threshold = scala.util.Random.nextDouble
     val iterator = dist.iterator
@@ -108,24 +108,24 @@ object ProbabilisticTools extends java.io.Serializable {
     sys.error("Error")
   }
 
-  def clustersParametersEstimation(Data: Array[DenseVector[Double]],
+  def clustersParametersEstimation(Data: List[DenseVector[Double]],
                                    prior: NormalInverseWishart,
-                                   rowPartition: Array[Int]) : Array[MultivariateGaussian] = {
+                                   rowPartition: List[Int]) : List[MultivariateGaussian] = {
 
 
     (Data zip rowPartition).groupBy(_._2).values.par.map(e => {
       val dataInCluster = e.map(_._1)
       val k = e.head._2
       val sufficientStatistic = prior.update(dataInCluster)
-      (k, sufficientStatistic.sample())
-    }).toArray.sortBy(_._1).map(_._2)
+      (k, sufficientStatistic.expectation())
+    }).toList.sortBy(_._1).map(_._2)
 
   }
 
-  def clustersParametersEstimation(dataByCol: Array[Array[DenseVector[Double]]],
-                                   prior: NormalInverseWishart,
-                                   rowPartition: Array[Int],
-                                   colPartition: Array[Int]) : Array[Array[MultivariateGaussian]] = {
+  def clustersParametersEstimationLBM(dataByCol: List[List[DenseVector[Double]]],
+                                      prior: NormalInverseWishart,
+                                      rowPartition: List[Int],
+                                      colPartition: List[Int]) : List[List[MultivariateGaussian]] = {
 
     (dataByCol zip colPartition).groupBy(_._2).values.par.map(e => {
       val dataInCol = e.map(_._1)
@@ -136,49 +136,58 @@ object ProbabilisticTools extends java.io.Serializable {
           val k = f.head._2
           val sufficientStatistic = prior.update(dataInBlock)
           (k, sufficientStatistic.expectation())
-        }).toArray.sortBy(_._1).map(_._2))
+        }).toList.sortBy(_._1).map(_._2))
 
-    }).toArray.sortBy(_._1).map(_._2)
+    }).toList.sortBy(_._1).map(_._2)
   }
 
-  def clustersParametersEstimationMC(dataByCol: Array[Array[DenseVector[Double]]],
+  def clustersParametersEstimationMC(dataByCol: List[List[DenseVector[Double]]],
                                      prior: NormalInverseWishart,
-                                     rowPartitions: Array[Array[Int]],
-                                     colPartition: Array[Int])(implicit d: DummyImplicit): Array[Array[MultivariateGaussian]] = {
+                                     rowPartitions: List[List[Int]],
+                                     colPartition: List[Int])(implicit d: DummyImplicit) = {
 
     (dataByCol zip colPartition).groupBy(_._2).values.par.map(e => {
-      val dataInCol = e.map(_._1)
+      val dataInCol: List[List[DenseVector[Double]]] = e.map(_._1)
       val l = e.head._2
       (l,
         (dataInCol.transpose zip rowPartitions(l)).groupBy(_._2).values.par.map(f => {
           val dataInBlock = f.map(_._1).reduce(_++_)
           val k = f.head._2
           val sufficientStatistic = prior.update(dataInBlock)
-          (k, sufficientStatistic.sample())
-        }).toArray.sortBy(_._1).map(_._2))
+          (k, sufficientStatistic.expectation())
+        }).toList.sortBy(_._1).map(_._2))
 
-    }).toArray.sortBy(_._1).map(_._2)
+    }).toList.sortBy(_._1).map(_._2)
   }
 
-  def clustersParametersEstimationMCC(dataByCol: Array[Array[DenseVector[Double]]],
+  def clustersParametersEstimationMCC(dataByCol: List[List[DenseVector[Double]]],
                                       prior: NormalInverseWishart,
-                                      redundantColPartition: Array[Int],
-                                      correlatedColPartitions: Array[Array[Int]],
-                                      rowPartitions: Array[Array[Int]]): Array[Array[MultivariateGaussian]] = {
+                                      redundantColPartition: List[Int],
+                                      correlatedColPartitions: List[List[Int]],
+                                      rowPartitions: List[List[Int]]) = {
 
-    val combinedColPartition = Common.Tools.combineRedundantAndCorrelatedColPartitions(redundantColPartition, correlatedColPartitions)
-
-    val rowPartitionDuplicatedPerColCluster = correlatedColPartitions.indices.map(h => {
-      Array.fill(correlatedColPartitions(h).distinct.length)(rowPartitions(h))
-    }).reduce(_++_)
-
-    clustersParametersEstimationMC(dataByCol, prior, rowPartitionDuplicatedPerColCluster, combinedColPartition)
+    (dataByCol zip redundantColPartition).groupBy(_._2).values.par.map(e => {
+      val dataInRedundantCol: List[List[DenseVector[Double]]] = e.map(_._1)
+      val h = e.head._2
+      (h,
+        (dataInRedundantCol zip correlatedColPartitions(h)).groupBy(_._2).values.par.map(f => {
+          val dataInCorrelatedCol: List[List[DenseVector[Double]]] = f.map(_._1)
+          val l = f.head._2
+          (l,
+            (dataInCorrelatedCol.transpose zip rowPartitions(h)).groupBy(_._2).values.par.map(e => {
+              val dataInBlock = e.map(_._1).reduce(_++_)
+              val k = e.head._2
+              val sufficientStatistic = prior.update(dataInBlock)
+              (k, sufficientStatistic.expectation())
+            }).toList.sortBy(_._1).map(_._2))
+        }).toList.sortBy(_._1).map(_._2))
+    }).toList.sortBy(_._1).map(_._2)
   }
 
-  def clustersParametersEstimationDPV(dataByCol: Array[Array[DenseVector[Double]]],
-                                      priors: Array[NormalInverseWishart],
-                                      rowPartitions: Array[Array[Int]],
-                                      colPartition: Array[Int])(implicit d: DummyImplicit): Array[Array[MultivariateGaussian]] = {
+  def clustersParametersEstimationDPV(dataByCol: List[List[DenseVector[Double]]],
+                                      priors: List[NormalInverseWishart],
+                                      rowPartitions: List[List[Int]],
+                                      colPartition: List[Int])(implicit d: DummyImplicit) = {
 
     dataByCol.indices.par.map(j => {
       (j,
@@ -186,23 +195,23 @@ object ProbabilisticTools extends java.io.Serializable {
           val dataInBlock = f.map(_._1)
           val k = f.head._2
           val sufficientStatistic = priors(j).update(dataInBlock)
-          (k, sufficientStatistic.sample())
-        }).toArray.sortBy(_._1).map(_._2))
+          (k, sufficientStatistic.expectation())
+        }).toList.sortBy(_._1).map(_._2))
 
-    }).toArray.sortBy(_._1).map(_._2)
+    }).toList.sortBy(_._1).map(_._2)
   }
 
 
-  def sample(nCategory: Int, weight: Array[Double] = Array.emptyDoubleArray): Int = {
-    val finalWeight = if(weight.isEmpty){
-      Array.fill(nCategory)(1D/nCategory.toDouble)
+  def sample(nCategory: Int, weight: List[Double] = Nil): Int = {
+    val finalWeight = if(weight==Nil){
+      List.fill(nCategory)(1D/nCategory.toDouble)
     } else {
       weight
     }
     sample(finalWeight)
   }
 
-  def sampleWithSeed(probabilities: Array[Double], seed: Long ): Int = {
+  def sampleWithSeed(probabilities: List[Double], seed: Long ): Int = {
     val dist = probabilities.indices zip probabilities
     val r = new scala.util.Random(seed)
     val threshold = r.nextDouble
@@ -217,39 +226,39 @@ object ProbabilisticTools extends java.io.Serializable {
     sys.error("Error")
   }
 
-  def scale(data: Array[Array[DenseVector[Double]]]): Array[Array[DenseVector[Double]]] = {
+  def scale(data: List[List[DenseVector[Double]]]): List[List[DenseVector[Double]]] = {
     data.map(column => {
-      val mode = meanArrayDV(column)
+      val mode = meanListDV(column)
       val cov = covariance(column,mode,"independant")
       val std = sqrt(diag(cov))
       column.map(_ /:/ std)
     })
   }
 
-  def weight(data: Array[Array[DenseVector[Double]]], weight: DenseVector[Double]): Array[Array[DenseVector[Double]]] = {
+  def weight(data: List[List[DenseVector[Double]]], weight: DenseVector[Double]): List[List[DenseVector[Double]]] = {
     data.map(column => {
       column.map(_ *:* weight)
     })
   }
 
-  def intToVecProb(i: Int, size:Int): Array[Double] = {
+  def intToVecProb(i: Int, size:Int): List[Double] = {
     val b = mutable.Buffer.fill(size)(1e-8)
     b(i)=1D
     val sum = b.sum
-    b.map(_/sum) .toArray
+    b.map(_/sum) .toList
   }
 
-  def partitionToBelongingProbabilities(partition: Array[Int], toLog:Boolean=false): Array[Array[Double]]={
+  def partitionToBelongingProbabilities(partition: List[Int], toLog:Boolean=false): List[List[Double]]={
 
     val K = partition.max+1
     val res = partition.indices.map(i => {
       intToVecProb(partition(i),K)
-    }).toArray
+    }).toList
 
     if(!toLog){res} else {res.map(_.map(log(_)))}
   }
 
-  def logSumExp(X: Array[Double]): Double ={
+  def logSumExp(X: List[Double]): Double ={
     val maxValue = max(X)
     maxValue + log(sum(X.map(x => exp(x-maxValue))))
   }
@@ -259,11 +268,11 @@ object ProbabilisticTools extends java.io.Serializable {
     maxValue + log(sum(X.map(x => exp(x-maxValue))))
   }
 
-  def normalizeProbability(probs: Array[Double]): Array[Double] = {
+  def normalizeProbability(probs: List[Double]): List[Double] = {
     normalizeLogProbability(probs.map(e => log(e)))
   }
 
-  def normalizeLogProbability(probs: Array[Double]): Array[Double] = {
+  def normalizeLogProbability(probs: List[Double]): List[Double] = {
     val LSE = Common.ProbabilisticTools.logSumExp(probs)
     probs.map(e => exp(e - LSE))
   }
@@ -277,9 +286,11 @@ object ProbabilisticTools extends java.io.Serializable {
     }
   }
 
-  def mapDm(probBelonging: DenseMatrix[Double]): Array[Int] = probBelonging(*, ::).map(argmax(_)).toArray
+  def mapDm(probBelonging: DenseMatrix[Double]): List[Int] = {
+    probBelonging(*,::).map(argmax(_)).toArray.toList
+  }
 
-  def MAP(probBelonging: Array[Array[Double]]): Array[Int] = {
+  def MAP(probBelonging: List[List[Double]]): List[Int] = {
     probBelonging.map(Tools.argmax)
   }
 
@@ -293,14 +304,14 @@ object ProbabilisticTools extends java.io.Serializable {
     val pi = pi1 / (pi1 + pi2)
     val newScale = 1 / (rate - log_x)
 
-    max(if(sample(Array(pi, 1 - pi)) == 0){
+    max(if(sample(List(pi, 1 - pi)) == 0){
       Gamma(shape = shape + nCluster, newScale).draw()
     } else {
       Gamma(shape = shape + nCluster - 1, newScale).draw()
     }, 1e-8)
   }
 
-  def stickBreaking(hyperPrior: Gamma, size:Int, seed : Option[Int] = None): Array[Double] = {
+  def stickBreaking(hyperPrior: Gamma, size:Int, seed : Option[Int] = None): List[Double] = {
 
     val actualSeed: Int = seed match {
       case Some(s) => s
@@ -311,14 +322,14 @@ object ProbabilisticTools extends java.io.Serializable {
     val concentrationParam = hyperPrior.draw()
 
     val betaPrior = new Beta(1,concentrationParam)(Rand)
-    val betaDraw: Array[Double] = (0 until size).map(_ => betaPrior.draw()).toArray
+    val betaDraw: List[Double] = (0 until size).map(_ => betaPrior.draw()).toList
 
-    val pi: Array[Double] = if(size == 1){
+    val pi: List[Double] = if(size == 1){
       betaDraw
     } else {
       betaDraw.head +: (1 until betaDraw.length).map(j => {
         betaDraw(j) * betaDraw.dropRight(betaDraw.length - j).map(1 - _).product
-      }).toArray
+      }).toList
     }
     pi
   }

@@ -10,6 +10,21 @@ import breeze.stats.distributions.{Gamma, MultivariateGaussian}
 import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
 
+/** Implements the inference of a Dirichlet Process Mixture Model on a multivariate dataset of continuous observations.
+  * The model assumes that several variables can share the same distribution (this information is given by initByUserColPartition)
+  * and that elements in the same block cluster (i.e., the same observation cluster and the same column cluster) follow independently
+  * the same multivariate Gaussian distribution.
+  * If no variable partition is given, every variable is assumed to follow a different distribution.
+  *
+  * @param DataByRow Dataset as list of list, with the first list indexing the rows, and the second the columns
+  * @param alpha (optional) Concentration parameter. Must be assigned a value if alphaPrior has none.
+  * @param alphaPrior (Optional) Concentration parameter prior. Must be assigned a value if alpha has none.
+  * @param initByUserPrior (optional) Prior distribution (Normal Inverse Wishart) on the mixture components parameters.
+  * @param initByUserRowPartition (optional) Initial observation partition that acts as a starting point for the inference.
+  * @param initByUserColPartition (optional) Variable partition, such that variables in the same variable cluster follow the same distribution.
+  *                               and elements in the same
+  * @param initByUserNIW (optional) Initial block component distribution hyper-parameters.
+  */
 class Clustering(DataByRow: List[List[DenseVector[Double]]],
                  alpha: Option[Double] = None,
                  alphaPrior: Option[Gamma] = None,
@@ -41,7 +56,7 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
     case Some(m) =>
       require(m.length == p)
       m
-    case None => List.fill(p)(0)
+    case None => (0 to p).toList
   }
 
   var rowPartitionEveryIteration: List[List[Int]] = List(rowPartition)
@@ -74,6 +89,11 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
   }
 
 
+  /** Sets the variable partition and block component posterior predictive distribution parameters values
+    *
+    * @param newColPartition List of Int
+    * @param newNIWParamByRow Nested List of Normal Inverse Wishart distributions.
+    */
   def setColPartitionAndNIWParams(newColPartition: List[Int], newNIWParamByRow: ListBuffer[ListBuffer[NormalInverseWishart]]): Unit ={
     require(newColPartition.length == p)
     countColCluster = partitionToOrderedCount(newColPartition).to[ListBuffer]
@@ -82,6 +102,10 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
     NIWParamsByRow = newNIWParamByRow
   }
 
+
+  /** Default initialization of the nested list of posterior predictive distributions.
+    *
+    */
   def initializeNIW: ListBuffer[ListBuffer[NormalInverseWishart]] = {
     (DataByRow zip rowPartition).groupBy(_._2).values.map(e => {
       val dataPerRowCluster = e.map(_._1).transpose
@@ -94,12 +118,21 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
     }).toList.sortBy(_._1).map(_._2).to[ListBuffer]
   }
 
+  /** Checks that either alpha or alphaPrior is assigned
+    *
+    * @param alpha
+    * @param alphaPrior
+    */
   def checkAlphaPrior(alpha: Option[Double], alphaPrior: Option[Gamma]): Boolean = {
     require(!(alpha.isEmpty & alphaPrior.isEmpty),"Either alphaRow or alphaRowPrior must be provided: please provide one of the two parameters.")
     require(!(alpha.isDefined & alphaPrior.isDefined), "Providing both alphaRow or alphaRowPrior is not supported: remove one of the two parameters.")
     alphaPrior.isDefined
   }
 
+  /** Computes the prior predictive distribution of one observation
+    *
+    * @param idx Observation index
+    */
   def priorPredictive(idx: Int): Double = {
     val row = DataByRow(idx)
     (row zip colPartition).groupBy(_._2).values.par.map(e => {
@@ -108,8 +141,11 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
     }).toList.sum
   }
 
-  def computeClusterMembershipProbabilities(idx: Int,
-                                            verbose: Boolean=false): List[Double] = {
+  /** Computes the cluster membership (existing clusters + new cluster discovery) probabilities.
+    *
+    * @param idx Index of the target observation
+    */
+  def computeClusterMembershipProbabilities(idx: Int): List[Double] = {
 
     val row = DataByRow(idx)
     val rowByCol = (row zip colPartition).groupBy(_._2).map(v => (v._1, v._2.map(_._1)))
@@ -120,82 +156,105 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
     }).toList.sortBy(_._1).map(_._2)
   }
 
-  def drawMembership(idx: Int, verbose : Boolean = false): Int = {
+  /** Update the membership of one observation
+    *
+    * @param idx Index of the target observation
+    */
+  def drawMembership(idx: Int): Int = {
 
-    val probPartition = computeClusterMembershipProbabilities(idx, verbose)
+    val probPartition = computeClusterMembershipProbabilities(idx)
     val posteriorPredictiveXi = priorPredictive(idx)
     val probs = probPartition :+ (posteriorPredictiveXi + log(actualAlpha))
     val normalizedProbs = normalizeLogProbability(probs)
     sample(normalizedProbs)
   }
 
-  private def removeElementFromRowCluster(row: List[DenseVector[Double]], currentPartition: Int): Unit = {
-    if (countRowCluster(currentPartition) == 1) {
-      countRowCluster.remove(currentPartition)
-      NIWParamsByRow.remove(currentPartition)
-      rowPartition = rowPartition.map(c => { if( c > currentPartition ){ c - 1 } else c })
+  /** Before updating one observation's membership, decrements the cluster count and removes the information associated with
+    * that observation from the corresponding block components (i.e. all the block components belonging to the associated row-cluster)
+    *
+    * @param idx Index of the target observation
+    * @param formerMembership Previous membership of the target observation
+    */
+  private def removeElementFromRowCluster(idx: Int, formerMembership: Int): Unit = {
+    if (countRowCluster(formerMembership) == 1) {
+      countRowCluster.remove(formerMembership)
+      NIWParamsByRow.remove(formerMembership)
+      rowPartition = rowPartition.map(c => { if( c > formerMembership ){ c - 1 } else c })
     } else {
-      countRowCluster.update(currentPartition, countRowCluster.apply(currentPartition) - 1)
-      (row zip colPartition).groupBy(_._2).values.foreach(e => {
+      countRowCluster.update(formerMembership, countRowCluster.apply(formerMembership) - 1)
+      (DataByRow(idx) zip colPartition).groupBy(_._2).values.foreach(e => {
         val l = e.head._2
         val dataInCol = e.map(_._1)
-        NIWParamsByRow(currentPartition).update(l, NIWParamsByRow(currentPartition)(l).removeObservations(dataInCol))
+        NIWParamsByRow(formerMembership).update(l, NIWParamsByRow(formerMembership)(l).removeObservations(dataInCol))
       })
     }
   }
 
-  private def addElementToRowCluster(row: List[DenseVector[Double]],
-                                     newPartition: Int): Unit = {
 
-    if (newPartition == countRowCluster.length) {
+  /** After having sampled a new membership for an observation, increments the cluster count and update the
+    * associated block components with the information associated with that observation
+    *
+    * @param idx Index of the target observation
+    * @param newMembership New membership of the target observation
+    */
+  private def addElementToRowCluster(idx: Int,
+                                     newMembership: Int): Unit = {
+
+    if (newMembership == countRowCluster.length) {
       countRowCluster = countRowCluster ++ ListBuffer(1)
-      NIWParamsByRow = NIWParamsByRow :+ (row zip colPartition).groupBy(_._2).values.map(e => {
+      NIWParamsByRow = NIWParamsByRow :+ (DataByRow(idx) zip colPartition).groupBy(_._2).values.map(e => {
         val l = e.head._2
         val dataInCol = e.map(_._1)
         (l, this.prior.update(dataInCol))
       }).to[ListBuffer].sortBy(_._1).map(_._2)
     } else {
-      countRowCluster.update(newPartition, countRowCluster.apply(newPartition) + 1)
-      (row zip colPartition).groupBy(_._2).values.foreach(e => {
+      countRowCluster.update(newMembership, countRowCluster.apply(newMembership) + 1)
+      (DataByRow(idx) zip colPartition).groupBy(_._2).values.foreach(e => {
         val l = e.head._2
         val dataInCol = e.map(_._1)
-        NIWParamsByRow(newPartition).update(l,
-          NIWParamsByRow(newPartition)(l).update(dataInCol))
+        NIWParamsByRow(newMembership).update(l,
+          NIWParamsByRow(newMembership)(l).update(dataInCol))
       })
     }
   }
 
+  /** Update the membership of every observations in the dataset
+    *
+    */
   def updatePartition(): Unit = {
     for (idx <- DataByRow.indices) {
-      val currentData = DataByRow(idx)
       val currentPartition = rowPartition(idx)
-      removeElementFromRowCluster(currentData, currentPartition)
+      removeElementFromRowCluster(idx, currentPartition)
       val newPartition = drawMembership(idx)
       rowPartition = rowPartition.updated(idx, newPartition)
-      addElementToRowCluster(currentData, newPartition)
+      addElementToRowCluster(idx, newPartition)
     }
 
     rowPartitionEveryIteration = rowPartitionEveryIteration :+ rowPartition
 
   }
 
-  def likelihood(componentsByRow: List[List[MultivariateGaussian]]): Double = {
+  /** Computes the model completed likelihood.
+    *
+    */
+  def likelihood(): Double = {
 
-    val rowPartitionDensity = probabilityPartition
+    val rowPartitionDensity: Double = probabilityPartition
 
-    require(countRowCluster.length == componentsByRow.length)
-    require(countColCluster.length == componentsByRow.head.length)
-
-    val dataLikelihood = DataByRow.indices.par.map(i => {
-      DataByRow.head.indices.map(j => {
-        componentsByRow(rowPartition(i))(colPartition(j)).logPdf(DataByRow(i)(j))
+    val dataLikelihood: Double = (DataByRow zip rowPartition).groupBy(_._2).values.par.map(e => {
+      val dataPerRowCluster = e.map(_._1).transpose
+      (dataPerRowCluster zip colPartition).groupBy(_._2).values.map(f => {
+        val dataPerBlock = f.map(_._1).reduce(_++_)
+        prior.jointPriorPredictive(dataPerBlock)
       }).sum
     }).sum
 
-    val paramsDensity = componentsByRow.reduce(_++_).map(prior.logPdf).sum
-    rowPartitionDensity + paramsDensity + dataLikelihood
+    rowPartitionDensity + dataLikelihood
   }
 
+  /** Returns the expectation of the block component parameters.
+    *
+    */
   def parametersEstimation: List[List[MultivariateGaussian]] = {
 
     (DataByRow zip rowPartition).groupBy(_._2).values.par.map(e => {
@@ -212,6 +271,9 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
     }).toList.sortBy(_._1).map(_._2)
   }
 
+  /** Returns the density of the partition
+    *
+    */
   def probabilityPartition: Double = {
     countRowCluster.length * log(actualAlpha) +
       countRowCluster.map(c => Common.Tools.logFactorial(c - 1)).sum -
@@ -219,11 +281,16 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
   }
 
 
+  /** launches the inference process
+    *
+    * @param nIter Iteration number
+    * @param verbose Boolean activating the output of additional information (cluster count evolution)
+    * @return
+    */
   def run(nIter: Int = 10,
-          verbose: Boolean = false,
-          printLikelihood: Boolean = false): (List[List[Int]], List[List[List[MultivariateGaussian]]], List[Double]) = {
+          verbose: Boolean = false): (List[List[Int]], List[List[List[MultivariateGaussian]]], List[Double]) = {
 
-    var likelihoodEveryIteration = List(likelihood(componentsEveryIterations.head))
+    var likelihoodEveryIteration = List(likelihood())
 
     @tailrec def go(iter: Int): Unit = {
 
@@ -247,7 +314,7 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
 
         componentsEveryIterations = componentsEveryIterations ++ List(components)
 
-        likelihoodEveryIteration =  likelihoodEveryIteration ++ List(likelihood(components))
+        likelihoodEveryIteration =  likelihoodEveryIteration ++ List(likelihood())
 
         go(iter + 1)
       }

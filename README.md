@@ -4,9 +4,9 @@ This code implements three model based block clustering methods. These models ar
 
 ### What's inside 
 
-The first approach, named "Clustering", performs the inference of a Dirichet Process Mixture Model on a multivariate dataset, with the possibility to address the multivariate case. It also enables the user to specify a partition of the variable, thus allowing the creation of "blocks", i.e., groups of variables and simulations that independently follow the same distribution.
+The first approach, named "Clustering", performs the inference of a Dirichet Process Mixture Model on a univariate or multivariate dataset. Optionnally, it enables the user to specify a partition of the variables, thus allowing the creation of "blocks", i.e., groups of variables and simulations that independently follow the same distribution. In the "Clustering" case, this partition is not updated.
 
-The second approach, named "Coclustering", estimates both the row-partition (as in the Clustering), but also estimates a variable partition. In this case, the dataset elements that belong to the same row and column cluster (i.e., the same block) follow independently the same distribution.
+The second approach, named "Coclustering", estimates both the row-partition (as in the Clustering), but also estimates the variable partition. In this case, the dataset elements that belong to the same row and column cluster (i.e., the same block) follow independently the same distribution.
 
 The last approach, named "Multi-Coclustering", assumes the presence of several coclustering structure. This approach first estimates a partition of variable and, in each dataset corresponding to one variable cluster, estimates a coclustering structure, such that elements belonging to the same block follow the same distribution independently. 
 

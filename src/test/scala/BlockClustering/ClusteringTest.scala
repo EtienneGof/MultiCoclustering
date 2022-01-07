@@ -9,23 +9,34 @@ import scala.collection.mutable.ListBuffer
 
 class ClusteringTest extends FunSuite {
 
-  val Data = List(List(DenseVector(1D), DenseVector(1D)), List(DenseVector(2D), DenseVector(1D)), List(DenseVector(3D), DenseVector(1D)),
-    List(DenseVector(1D), DenseVector(1D)), List(DenseVector(2D), DenseVector(1D)), List(DenseVector(3D), DenseVector(1D)),
-    List(DenseVector(1D), DenseVector(1D)), List(DenseVector(2D), DenseVector(1D)), List(DenseVector(3D), DenseVector(1D)))
+  val Data = List(
+    List(DenseVector(1D), DenseVector(1D)),
+    List(DenseVector(2D), DenseVector(1D)),
+    List(DenseVector(3D), DenseVector(1D)),
+    List(DenseVector(1D), DenseVector(1D)),
+    List(DenseVector(2D), DenseVector(1D)),
+    List(DenseVector(3D), DenseVector(1D)),
+    List(DenseVector(1D), DenseVector(1D)),
+    List(DenseVector(2D), DenseVector(1D)),
+    List(DenseVector(3D), DenseVector(1D))
+  )
 
   test("Default constructor") {
     {
 
       val clustering = new Clustering(Data, alpha = Some(10D))
 
-      assert(clustering.rowPartition == List.fill(9)(0))
-      assert(clustering.colPartition == List(0, 0))
+
       assert(clustering.n == 9)
       assert(clustering.p == 2)
       assert(clustering.d == 1)
+
+      assert(clustering.rowPartition == List.fill(9)(0))
+      assert(clustering.colPartition == List(0, 1))
+
       assert(clustering.countRowCluster == ListBuffer(9))
-      assert(clustering.countColCluster == ListBuffer(2))
-      assert(clustering.NIWParamsByRow.head.head.checkNIWParameterEquals(clustering.prior.update(Data.flatten.toList)))
+      assert(clustering.countColCluster == ListBuffer(1, 1))
+      assert(clustering.NIWParamsByRow.head.head.checkNIWParameterEquals(clustering.prior.update(Data.map(_.head).toList)))
       assert(! clustering.updateAlphaFlag)
       assert(clustering.actualAlphaPrior.scale == 1D & clustering.actualAlphaPrior.shape == 1D)
       assert(clustering.actualAlpha == 10D)

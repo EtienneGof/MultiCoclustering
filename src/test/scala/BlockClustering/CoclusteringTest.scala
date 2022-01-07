@@ -37,12 +37,14 @@ class CoclusteringTest extends FunSuite {
       assert(coclustering.rowClustering.n == 60)
       assert(coclustering.rowClustering.p == 45)
       assert(coclustering.rowClustering.d == 2)
-      assert(coclustering.rowClustering.colPartition == List.fill(45)(0))
+      assert(coclustering.rowClustering.colPartition == (0 until 45).toList)
       assert(coclustering.rowClustering.rowPartition == List.fill(60)(0))
-      assert(coclustering.rowClustering.countColCluster == ListBuffer(45))
+      assert(coclustering.rowClustering.countColCluster == ListBuffer.fill(45)(1))
       assert(coclustering.rowClustering.countRowCluster == ListBuffer(60))
-      assert(coclustering.rowClustering.NIWParamsByRow.length == 1 & coclustering.rowClustering.NIWParamsByRow.head.length == 1)
-      assert(coclustering.rowClustering.NIWParamsByRow.head.head.checkNIWParameterEquals(coclustering.rowClustering.prior.update(Data.flatten)))
+      assert(coclustering.rowClustering.NIWParamsByRow.length == 1 & coclustering.rowClustering.NIWParamsByRow.head.length == 45)
+
+      assert(coclustering.rowClustering.NIWParamsByRow.head.head.checkNIWParameterEquals(coclustering.rowClustering.prior.update(Data.map(_.head))))
+
       assert(! coclustering.rowClustering.updateAlphaFlag)
       assert(coclustering.rowClustering.actualAlphaPrior.scale == 1D & coclustering.rowClustering.actualAlphaPrior.shape == 1D)
       assert(coclustering.rowClustering.actualAlpha == 5D)
@@ -50,12 +52,14 @@ class CoclusteringTest extends FunSuite {
       assert(coclustering.colClustering.p == 60)
       assert(coclustering.colClustering.n == 45)
       assert(coclustering.colClustering.d == 2)
-      assert(coclustering.colClustering.rowPartition == List.fill(45)(0))
+
+      assert(coclustering.colClustering.rowPartition == (0 until 45).toList)
+
       assert(coclustering.colClustering.colPartition == List.fill(60)(0))
-      assert(coclustering.colClustering.countRowCluster == ListBuffer(45))
+      assert(coclustering.colClustering.countRowCluster == ListBuffer.fill(45)(1))
       assert(coclustering.colClustering.countColCluster == ListBuffer(60))
 
-      assert(coclustering.colClustering.NIWParamsByRow.head.head.checkNIWParameterEquals(coclustering.colClustering.prior.update(Data.flatten)))
+      assert(coclustering.colClustering.NIWParamsByRow.head.head.checkNIWParameterEquals(coclustering.colClustering.prior.update(Data.map(_.head))))
       assert(! coclustering.colClustering.updateAlphaFlag)
       assert(coclustering.colClustering.actualAlphaPrior.scale == 1D & coclustering.colClustering.actualAlphaPrior.shape == 1D)
       assert(coclustering.colClustering.actualAlpha == 10D)

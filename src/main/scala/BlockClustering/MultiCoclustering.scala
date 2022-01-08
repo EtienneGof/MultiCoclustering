@@ -9,6 +9,18 @@ import breeze.stats.distributions.Gamma
 import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
 
+
+/**
+  * Implements the inference of a multi-coclustering model, assuming the existing of several coclustering structures.
+  * @param DataByRow Dataset as list of list, with the first list indexing the rows, and the second the columns
+  * @param alphaRowPrior Observation partition concentration parameter prior.
+  * @param alphaColPrior Variable partition concentration parameter prior.
+  * @param alphaRedundantColPrior Variable assignement in the coclustering structures.
+  * @param initByUserPrior (optional) Prior distribution (Normal Inverse Wishart) on the mixture components parameters.
+  * @param initByUserRowPartitions (optional) Initial observation partitions that acts as a starting point for the inference.
+  * @param initByUserColPartitions (optional) Initial variable partitions that acts as a starting point for the inference.
+  * @param initByUserRedundantColPartition (optional) Initial variable partitions that acts as a starting point for the inference.
+  */
 class MultiCoclustering(val DataByRow: List[List[DenseVector[Double]]],
                         var alphaRowPrior: Gamma,
                         var alphaColPrior: Gamma,

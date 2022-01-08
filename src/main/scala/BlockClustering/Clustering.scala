@@ -11,8 +11,8 @@ import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
 
 /** Implements the inference of a Dirichlet Process Mixture Model on a multivariate dataset of continuous observations.
-  * The model assumes that several variables can share the same distribution (this information is given by initByUserColPartition)
-  * and that elements in the same block cluster (i.e., the same observation cluster and the same column cluster) follow independently
+  * The model assumes the existence of a variable partition (inputted by initByUserColPartition) such that variables in the
+  * same variable cluster follow the same distribution, and such that elements in the same block cluster (i.e., the same observation cluster and the same column cluster) follow independently
   * the same multivariate Gaussian distribution.
   * If no variable partition is given, every variable is assumed to follow a different distribution.
   *
@@ -56,7 +56,7 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
     case Some(m) =>
       require(m.length == p)
       m
-    case None => (0 to p).toList
+    case None => (0 until p).toList
   }
 
   var rowPartitionEveryIteration: List[List[Int]] = List(rowPartition)

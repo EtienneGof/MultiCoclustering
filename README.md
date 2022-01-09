@@ -13,7 +13,7 @@ The last approach, named "Multi-Coclustering", assumes the presence of several c
 The three methods and their inter-connection is illustrated below
 
 <p align="center">
-  <img src="https://github.com/EtienneGof/MultiCoclustering/blob/main/illustration.gif" />
+  <img src="https://github.com/EtienneGof/MultiCoclustering/blob/main/methodsIllustration.gif" />
 </p>
 
 

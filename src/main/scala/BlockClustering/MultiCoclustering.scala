@@ -48,7 +48,7 @@ class MultiCoclustering(val DataByRow: List[List[DenseVector[Double]]],
   }
 
   var countRedundantColCluster: ListBuffer[Int] = partitionToOrderedCount(redundantColPartition).to[ListBuffer]
-  val nRedundantColCluster: Int = countRedundantColCluster.length
+  var nRedundantColCluster: Int = countRedundantColCluster.length
 
   var rowPartitions: ListBuffer[List[Int]] = initByUserRowPartitions match {
     case Some(m) =>
@@ -115,20 +115,22 @@ class MultiCoclustering(val DataByRow: List[List[DenseVector[Double]]],
     sample(normalizedProbs)
   }
 
-  def removeElementFromColCluster(column: List[DenseVector[Double]], currentColMembership: Int): Unit = {
+  def removeElementFromRedundantCluster(column: List[DenseVector[Double]], currentColMembership: Int): Unit = {
     if (countRedundantColCluster(currentColMembership) == 1) {
       countRedundantColCluster.remove(currentColMembership)
       rowPartitions.remove(currentColMembership)
+      colPartitions.remove(currentColMembership)
       redundantColPartition = redundantColPartition.map(c => { if( c > currentColMembership ){ c - 1 } else c })
     } else {
       countRedundantColCluster.update(currentColMembership, countRedundantColCluster.apply(currentColMembership) - 1)
     }
   }
 
-  def addElementToColCluster(j:Int, newColMembership: Int): Unit = {
+  def addElementToRedundantCluster(j:Int, newColMembership: Int): Unit = {
     if (newColMembership == countRedundantColCluster.length) {
       countRedundantColCluster = countRedundantColCluster ++ ListBuffer(1)
       rowPartitions = rowPartitions ++ List(rowMembershipPriorPredictiveEachVar(j))
+      colPartitions = colPartitions ++ List(List(0))
     } else {
       countRedundantColCluster.update(newColMembership, countRedundantColCluster.apply(newColMembership) + 1)
     }
@@ -138,11 +140,15 @@ class MultiCoclustering(val DataByRow: List[List[DenseVector[Double]]],
     for (j <- DataByCol.indices) {
       val currentData = DataByCol(j)
       val currentMembership = redundantColPartition(j)
-      removeElementFromColCluster(currentData, currentMembership)
+      removeElementFromRedundantCluster(currentData, currentMembership)
       val newMembership = drawColMemberships(j)
       redundantColPartition = redundantColPartition.updated(j, newMembership)
-      addElementToColCluster(j, newMembership)
+      addElementToRedundantCluster(j, newMembership)
     }
+
+
+    require(rowPartitions.length == colPartitions.length)
+
   }
 
   def updateCoclusteringStructures(): Unit = {

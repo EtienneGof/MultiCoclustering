@@ -8,7 +8,7 @@ The first approach, named "Clustering", performs the inference of a Dirichet Pro
 
 The second approach, named "Coclustering", estimates both the row-partition (as in the Clustering), but also estimates the variable partition. In this case, the dataset elements that belong to the same row and column cluster (i.e., the same block) follow independently the same distribution.
 
-The last approach, named "Multi-Coclustering", assumes the presence of several coclustering structure. This approach first estimates a partition of variable and, in each dataset corresponding to one variable cluster, estimates a coclustering structure, such that elements belonging to the same block follow the same distribution independently. 
+The last approach, named "Multi-Coclustering", assumes the presence of several coclustering structures. This approach first estimates a partition of variable and, in each dataset corresponding to one variable cluster, estimates a coclustering structure, such that elements in the same coclustering structure and, inside of it, in the same block, follow the same distribution independently. 
 
 The three methods and their inter-connection is illustrated below
 

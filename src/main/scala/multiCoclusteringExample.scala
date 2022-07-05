@@ -57,6 +57,12 @@ object multiCoclusteringExample {
     Common.Tools.prettyPrintMCC(rowPartitions.map(partitionToOrderedCount),
       columnPartitions.map(partitionToOrderedCount))
 
+    var components = MCC.componentsEstimation
+    println(components.length)
+    components.foreach(c => {
+      println(c.length)
+    })
+
   }
 
 }

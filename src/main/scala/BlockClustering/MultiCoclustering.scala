@@ -107,7 +107,7 @@ class MultiCoclustering(val DataByRow: List[List[DenseVector[Double]]],
 
   }
 
-  def parametersEstimation: List[List[List[MultivariateGaussian]]] = {
+  def componentsEstimation: List[List[List[MultivariateGaussian]]] = {
       (DataByCol zip redundantColPartition).groupBy(_._2).values.par.map(e => {
         val dataInCol = e.map(_._1)
         val h = e.head._2

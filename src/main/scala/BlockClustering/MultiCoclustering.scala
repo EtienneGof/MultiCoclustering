@@ -5,9 +5,9 @@ import Common.ProbabilisticTools.{normalizeLogProbability, sample, updateAlpha}
 import Common.Tools._
 import breeze.linalg.{DenseMatrix, DenseVector}
 import breeze.numerics.log
-import breeze.stats.distributions.Gamma
 import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
+import breeze.stats.distributions.{Gamma, MultivariateGaussian}
 
 
 /**
@@ -50,6 +50,7 @@ class MultiCoclustering(val DataByRow: List[List[DenseVector[Double]]],
   var countRedundantColCluster: ListBuffer[Int] = partitionToOrderedCount(redundantColPartition).to[ListBuffer]
   var nRedundantColCluster: Int = countRedundantColCluster.length
 
+
   var rowPartitions: ListBuffer[List[Int]] = initByUserRowPartitions match {
     case Some(m) =>
       require(m.length == nRedundantColCluster,
@@ -78,7 +79,6 @@ class MultiCoclustering(val DataByRow: List[List[DenseVector[Double]]],
 
   var alphaRedundantCol: Double = updateAlpha(alphaRedundantColPrior.mean, alphaRedundantColPrior, countRedundantColCluster.length, p)
 
-
   def columnPriorPredictive(colIdx: Int): (Double, List[Int]) = {
 
     val column = DataByCol(colIdx).toArray.toList
@@ -92,6 +92,7 @@ class MultiCoclustering(val DataByRow: List[List[DenseVector[Double]]],
     (priorDistributionInPartition(column, membership.last), membership.last)
 
   }
+
   def priorDistributionInPartition(column: List[DenseVector[Double]], partition: List[Int]): Double = {
     (column zip partition).groupBy(_._2).values.par.map(e => {
       val dataInBlock = e.map(_._1)
@@ -106,6 +107,19 @@ class MultiCoclustering(val DataByRow: List[List[DenseVector[Double]]],
 
   }
 
+  def parametersEstimation: List[List[List[MultivariateGaussian]]] = {
+      (DataByCol zip redundantColPartition).groupBy(_._2).values.par.map(e => {
+        val dataInCol = e.map(_._1)
+        val h = e.head._2
+        val m = new Coclustering(dataInCol.transpose,
+          alphaRowPrior = Some(alphaRowPrior),
+          alphaColPrior = Some(alphaColPrior),
+          initByUserPrior = Some(prior),
+          initByUserRowPartition = Some(rowPartitions(h)),
+          initByUserColPartition = Some(colPartitions(h)))
+        (h, m.componentsEstimation)
+      }).toList.sortBy(_._1).map(e => e._2)
+  }
 
   def drawColMemberships(colIdx: Int,
                          verbose : Boolean = false): Int = {
@@ -199,8 +213,6 @@ class MultiCoclustering(val DataByRow: List[List[DenseVector[Double]]],
     }
 
     go(1)
-
-    updateRedundantColMembership()
 
     (redundantColPartition, rowPartitions.toList, colPartitions.toList)
 

@@ -50,6 +50,13 @@ class Coclustering(val DataByRow: List[List[DenseVector[Double]]],
     rowLikelihood + colClustering.probabilityPartition
   }
 
+  /** Returns the expectation of the block component parameters.
+    *
+    */
+  def componentsEstimation: List[List[MultivariateGaussian]] = {
+    rowClustering.componentsEstimation
+  }
+
   /** launches the inference process
     *
     * @param nIter Iteration number

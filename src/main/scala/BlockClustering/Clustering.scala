@@ -60,7 +60,7 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
   }
 
   var rowPartitionEveryIteration: List[List[Int]] = List(rowPartition)
-  var componentsEveryIterations: List[List[List[MultivariateGaussian]]] = List(parametersEstimation)
+  var componentsEveryIterations: List[List[List[MultivariateGaussian]]] = List(componentsEstimation)
 
   var countRowCluster: ListBuffer[Int] = partitionToOrderedCount(rowPartition).to[ListBuffer]
   var countColCluster: ListBuffer[Int] = partitionToOrderedCount(colPartition).to[ListBuffer]
@@ -94,7 +94,8 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
     * @param newColPartition List of Int
     * @param newNIWParamByRow Nested List of Normal Inverse Wishart distributions.
     */
-  def setColPartitionAndNIWParams(newColPartition: List[Int], newNIWParamByRow: ListBuffer[ListBuffer[NormalInverseWishart]]): Unit ={
+  def setColPartitionAndNIWParams(newColPartition: List[Int],
+                                  newNIWParamByRow: ListBuffer[ListBuffer[NormalInverseWishart]]): Unit ={
     require(newColPartition.length == p)
     countColCluster = partitionToOrderedCount(newColPartition).to[ListBuffer]
     colPartition = newColPartition
@@ -255,7 +256,7 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
   /** Returns the expectation of the block component parameters.
     *
     */
-  def parametersEstimation: List[List[MultivariateGaussian]] = {
+  def componentsEstimation: List[List[MultivariateGaussian]] = {
 
     (DataByRow zip rowPartition).groupBy(_._2).values.par.map(e => {
       val dataInRowCluster = e.map(_._1)
@@ -310,9 +311,6 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
         }
 
         if(updateAlphaFlag){actualAlpha = updateAlpha(actualAlpha, actualAlphaPrior, countRowCluster.length, n)}
-        val components = parametersEstimation
-
-        componentsEveryIterations = componentsEveryIterations ++ List(components)
 
         likelihoodEveryIteration =  likelihoodEveryIteration ++ List(likelihood())
 
@@ -321,7 +319,6 @@ class Clustering(DataByRow: List[List[DenseVector[Double]]],
     }
 
    go(1)
-
 
     (rowPartitionEveryIteration,  componentsEveryIterations, likelihoodEveryIteration)
 
